@@ -1,0 +1,333 @@
+<?php 
+
+/**
+ * 
+ */
+class karta {
+    
+	private $db;
+    private $nr_karty;
+    private $rok;
+    private $szpital;
+    private $firma;
+    private $szpital_r;
+    private $firma_r;
+    private $miejsce;
+    private $kod_odpadu;
+    private $rodzaj_odpadu;
+    private $data;
+    private $masa;
+    private $nr_rejest;
+	
+	function __construct() {
+		$this->db = new DataBase();
+	}
+    
+    function checkKarta($year, $company, $odpad, $data, $masa, $nr_rejest, $update){
+        $error = "";
+        if(!empty($update) && $update == 1){
+            if(empty($odpad) || empty($masa) || empty($nr_rejest)){
+                $error .='a';
+            }
+            
+            if(!preg_match('/^([0-9.]+$)/', $masa)){
+            $error .= 'b';
+            }
+        }else{
+            if(empty($year) || empty($company) || empty($odpad) || empty($data) || empty($masa) || empty($nr_rejest)){
+                $error .= 'a';
+            }
+            if(!preg_match('/^[0-9.]+$/', $masa)){
+            $error .= 'b';
+            }
+            if(strlen($nr_rejest) != 7){
+            $error .= 'c';
+            }
+        
+            $year_date = substr($data, 0, 4);
+            if($year_date > $year){
+                $error .= 'd';
+            }
+            $data = new DateTime($data);
+            $data_aktualna = date("Y-m-d");
+            $data_aktualna = new DateTime($data_aktualna);
+            if($data>$data_aktualna){
+                $error .= 'e';
+            }
+        }
+        
+        
+        return $error;
+    }
+    function StrContains($string, $ciag){
+        return(strpos($string,$ciag)!==false);
+    }
+    
+    function checkError($error){
+        $error_1 = "";
+        if($this->StrContains($error, 'a')){
+            $error_1 .= 'Wszystkie pola muszą być wypełnione!<br />';
+        }
+        if($this->StrContains($error, 'b')){
+            $error_1 .= 'Masa musi być liczbą i odzielona kropką!<br />';
+        }
+        if($this->StrContains($error, 'c')){
+            $error_1 .= 'Numer rejestracyjny musi posiadać 7 znaków! <br />';
+        }
+        if($this->StrContains($error, 'd')){
+            $error_1 .= 'Wybrany rok jest mniejszy od wybranej daty! <br />';
+        }
+        if($this->StrContains($error, 'e')){
+            $error_1 .= 'Niepoprawna data! <br />';
+        }
+        return $error_1;
+    }
+    
+    function getLastKarta($year=""){
+        $query = $this->db->query("SELECT * FROM `karta` WHERE rok_kalend = '$year' ORDER BY id_karta DESC LIMIT 1");
+        $result = mysql_fetch_object($query);
+        if($result == ""){
+           return 0;
+        }else{
+            return $result->numer_karty;
+        }
+        
+    }
+    
+    function addKarta($year="", $company="", $odpad="", $data="", $masa="", $nr_rejest=""){
+         $id_user = $this->db->getIdUser();
+         $masa = $this->db->validate($masa);
+         $nr_rejest = $this->db->validate($nr_rejest);
+         $check = $this->checkKarta($year, $company, $odpad, $data, $masa, $nr_rejest, "");
+         if($check == ""){
+             $numer_karty = $this->getLastKarta($year);
+             $ile = strpos($numer_karty, "/");
+             $numer_karty = $numer_karty +1;
+             $numer_karty = strval($numer_karty);
+             $numer_karty = $numer_karty."/".$year;
+             $data_utworz = date("Y-m-d");
+             $query = "INSERT INTO karta (id_firma, id_user, id_odpad, numer_karty, rok_kalend, data, masa, numer_rejest, data_utworz)";
+             $query .= " VALUES ($company, $id_user, $odpad, '$numer_karty', $year, '$data', '$masa', '$nr_rejest', '$data_utworz')";
+             $this->db->query($query);
+             $id_karta = $this->getIdKarta($numer_karty, $year);
+             $this->generatePdf($id_karta);
+             $check = 1;
+             return $check;
+           }else{
+             return $check;
+         }
+    }
+    // funkcja do pobrania konkretnej karty na podstawie numeru karty oraz roku
+    function getIdKarta($nr_karty ="", $year=""){
+        $query = "SELECT * FROM karta where numer_karty = '$nr_karty' and rok_kalend = $year";
+        $result = $this->db->query($query);
+        $array = mysql_fetch_object($result);
+        return $array->id_karta;
+    }
+    
+    function getKarta($id_karta=""){
+        //jesli $id_karta jest puste to pobierze wszystkie karty z bazy wraz z id_karta
+        //if($id_karta == ""){
+            //$query = "SELECT karta.id_karta, karta.numer_karty, karta.rok_kalend, karta.data, karta.masa, karta.numer_rejest, karta.data_utworz, firma.*, odpad.*"; 
+            //$query .= " FROM karta JOIN firma on karta.id_firma = firma.id_firma JOIN odpad on karta.id_odpad = odpad.id_odpad";
+        //}else{
+            $query = "SELECT karta.numer_karty, karta.rok_kalend, karta.data, karta.masa, karta.numer_rejest, karta.data_utworz, firma.*, odpad.*";
+            $query .= " FROM karta JOIN firma on karta.id_firma = firma.id_firma JOIN odpad on karta.id_odpad = odpad.id_odpad WHERE id_karta = $id_karta";
+        //}
+        $result = $this->db->query($query);
+        $karta = mysql_fetch_object($result);
+        //$this->nr_karty = $karta->numer_karty."/".$karta->rok_kalend;
+        $this->nr_karty = $karta->numer_karty;
+        $this->rok = $karta->rok_kalend; 
+        $this->szpital = "Szpital Wojewódzki im. M. Kopernika ul. T. Chałubińskiego 7";
+        $this->szpital .= " 75-581 KOSZALIN NIP 669-10-44-410";
+        $this->firma = $karta->nazwa." ".$karta->kod_poczt." ".$karta->miasto." ul. ".$karta->ulica." ".$karta->tel." NIP ".$karta->nip;
+        $this->szpital_r = "330006292-00036";
+        $this->firma_r = $karta->regon;
+        $this->miejsce = $karta->miejsce;
+        $this->kod_odpadu = $karta->kod;
+        $this->rodzaj_odpadu = $karta->rodzaj;
+        $this->data = $karta->data;
+        $this->masa = $karta->masa;
+        $this->nr_rejest = $karta->numer_rejest;
+        return $karta;
+    }
+    
+    function getCardToEdit($id=""){
+        $id = $this->db->validate($id);
+        $query = "SELECT * FROM karta where id_karta = $id";
+        $result = $this->db->query($query);
+        $result = mysql_fetch_object($result);
+        return $result;        
+    }
+    
+    function UpdateCard($id ="", $odpad ="", $masa ="", $nr_rejestracyjny ="", $data ="")
+    {
+        $id = $this->db->validate($id);
+        $odpad = $this->db->validate($odpad);
+        $masa = $this->db->validate($masa);
+        $data = $this->db->validate($data);
+        $nr_rejestracyjny = $this->db->validate($nr_rejestracyjny);
+        $check = $this->checkKarta("", "", $odpad, "", $masa, $nr_rejestracyjny, 1);
+        if($check==""){
+            $query = "UPDATE karta SET id_odpad = $odpad, masa = '$masa', numer_rejest = '$nr_rejestracyjny', data = '$data' ";
+            $query .="WHERE id_karta = $id";
+            $this->db->query($query);
+            $this->generatePdf($id);
+            $check = 1;
+            return $check;
+        }else{
+            return $check;
+        }
+        
+    }
+    
+    
+    //aby utworzyc pdf-a wystarczy wywolac ta fukncje z id danej karty z bazy
+    function generatePdf($id_karta=""){
+        $karta = $this->getKarta($id_karta);
+        $file = 'karta_przekazania_odpadu' . '.pdf';
+        $fill_func = 'fill_pdf_my_file';
+        $operation = 'fill';
+        $flatten = " -flatten";
+        $this->pdfff_fill_pdffile_and_dump_to_http($file, $operation, $flatten);        
+    }
+    
+    function pdfff_fill_pdffile_and_dump_to_http($file, $operation, $flatten) {
+    $DO_DUMP = false;
+    $error = 0;
+
+//putenv('LANG=en_US.UTF-8');
+    $env = array('LANG' => 'pl_PL.UTF-8');
+    $path = null;
+// On FreeBSD open_proc() is not run in a shell and
+// thus a PATH with 'usr/local/bin' and CWD are not set.
+// $env['PATH'] = '/usr/bin:/bin:/usr/local/bin';
+// $path = '/var/www/linux.org/site/htroot/doc';
+
+    if ($operation == 'list') {
+        // List all fields that are available in pdf file $file.
+        $cmd = 'java -jar pdfformfiller.jar ' . $file . ' -l 2>&1';
+        $DO_DUMP = true; // send error as text to browser (not as a file to download via http).
+    } else if ($operation == 'env_vars') {
+        $cmd = 'set';
+        $DO_DUMP = true;
+    } else if ($operation == 'dump_fields') {
+        $cmd = 'cat';
+        $DO_DUMP = true;
+    } else
+        //$cmd = 'java -jar pdfformfiller.jar ' . $file . ' -font "fonts/arial.ttf"' . $flatten . ' 2>&1 karta_odpadu.pdf';
+        $cmd = 'java -jar pdfformfiller.jar ' . $file . ' -font "fonts/arial.ttf"' . $flatten . '  karta_odpadu.pdf';
+    
+    $descriptorspec = array(
+        0 => array("pipe", "r"), // stdin is a pipe that the child will read from
+        1 => array("pipe", "w"), // stdout is a pipe that the child will write to
+         //2 => array("file", "error-output.txt", "a") // stderr is a file to write to
+        2 => array("pipe", "w")  // Actually, stderr is sent to stdin " 2>&1" 
+    );
+    
+    $f = proc_open($cmd, $descriptorspec, $pipes, $path, $env /* [, array $other_options ] */);
+    $error |= $f === false;
+
+    if (!$operation || $operation == 'fill')
+        $error |= $this->fill_pdf_my_file($pipes[0]);
+
+    $error |= false === fclose($pipes[0]);
+
+    $result = stream_get_contents($pipes[1]);
+    $error |= false === $result;
+    $error |= false === fclose($pipes[1]);
+
+// It is important that you close any pipes before calling
+// proc_close in order to avoid a deadlock
+
+    $return_value = proc_close($f);
+    $error |= $return_value != 0;
+
+    if (!$error && !$DO_DUMP) {
+        // Disable cache.
+        header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1
+        // We'll be outputting a PDF
+    } else {
+        header("Content-Type: text/plain");
+        if ($error) {
+            echo "ERROR:\n";
+            if ($return_value == -1)
+                echo "Error accesing pdfformfiller.\n";
+            else
+                echo "pdfformfiller returned error code: $return_value\n\n";
+        }
+    }
+    //echo $result;
+}
+
+function fill_pdf_my_file($pipe) {
+    $error = 0;
+    $error |= false === fwrite($pipe, 'nr_karty' . ' ' . $this->pdfff_escape($this->nr_karty) . "\n");
+    $error |= false === fwrite($pipe, 'rok' . ' ' . $this->pdfff_escape($this->rok) . "\n");
+    $error |= false === fwrite($pipe, 'szpital' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_2' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'posiadacz' . ' ' . $this->pdfff_escape($this->firma) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_r' . ' ' . $this->pdfff_escape($this->szpital_r) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_r_2' . ' ' . $this->pdfff_escape($this->szpital_r) . "\n");
+    $error |= false === fwrite($pipe, 'posiadacz_r' . ' ' . $this->pdfff_escape($this->firma_r) . "\n");
+    $error |= false === fwrite($pipe, 'miejsce' . ' ' . $this->pdfff_escape($this->miejsce) . "\n");
+    $error |= false === fwrite($pipe, 'kod_odpadu' . ' ' . $this->pdfff_escape($this->kod_odpadu ) . "\n");
+    $error |= false === fwrite($pipe, 'rodzaj_odpadu' . ' ' . $this->pdfff_escape($this->rodzaj_odpadu) . "\n");
+    $error |= false === fwrite($pipe, 'data' . ' ' . $this->pdfff_escape($this->data) . "\n");
+    $error |= false === fwrite($pipe, 'masa' . ' ' . $this->pdfff_escape($this->masa) . "\n");
+    $error |= false === fwrite($pipe, 'rejestracja' . ' ' . $this->pdfff_escape($this->nr_rejest) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_3' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_4' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'posiadacz_potw' . ' ' . $this->pdfff_escape($this->firma) . "\n");
+    
+    $error |= false === fwrite($pipe, 'nr_karty_x' . ' ' . $this->pdfff_escape($this->nr_karty) . "\n");
+    $error |= false === fwrite($pipe, 'rok_x' . ' ' . $this->pdfff_escape($this->rok) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_x' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_2_x' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'posiadacz_x' . ' ' . $this->pdfff_escape($this->firma) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_r_x' . ' ' . $this->pdfff_escape($this->szpital_r) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_r_2_x' . ' ' . $this->pdfff_escape($this->szpital_r) . "\n");
+    $error |= false === fwrite($pipe, 'posiadacz_r_x' . ' ' . $this->pdfff_escape($this->firma_r) . "\n");
+    $error |= false === fwrite($pipe, 'miejsce_x' . ' ' . $this->pdfff_escape($this->miejsce) . "\n");
+    $error |= false === fwrite($pipe, 'kod_odpadu_x' . ' ' . $this->pdfff_escape($this->kod_odpadu ) . "\n");
+    $error |= false === fwrite($pipe, 'rodzaj_odpadu_x' . ' ' . $this->pdfff_escape($this->rodzaj_odpadu) . "\n");
+    $error |= false === fwrite($pipe, 'data_x' . ' ' . $this->pdfff_escape($this->data) . "\n");
+    $error |= false === fwrite($pipe, 'masa_x' . ' ' . $this->pdfff_escape($this->masa) . "\n");
+    $error |= false === fwrite($pipe, 'rejestracja_x' . ' ' . $this->pdfff_escape($this->nr_rejest) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_3_x' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'szpital_4_x' . ' ' . $this->pdfff_escape($this->szpital) . "\n");
+    $error |= false === fwrite($pipe, 'posiadacz_potw_x' . ' ' . $this->pdfff_escape($this->firma) . "\n");
+    
+    return $error;
+}
+
+function pdfff_escape($str) {
+    //$str = str_replace("\\", "\\\\", $str);
+    //$str = str_replace("\n", "\\n", $str);
+    mb_internal_encoding('UTF-8');
+    mb_regex_encoding('UTF-8');
+
+    //if (($s = mb_ereg_replace("\\", "\\\\" , $str, 'p')) !== false)
+        //$str = $s;
+
+    // U+2028 utf-8 E280A8 : LINE SEPARATOR LS
+    if (($s = mb_ereg_replace("\xE2\x80\xA8", "\\n", $str, "p")) !== false)
+        $str = $s;
+
+    //U+2029 utf-8 E280A9 : PARAGRAPH SEPARATOR PS
+    if (($s = mb_ereg_replace("\xE2\x80\xA8", "\\p", $str, "p")) !== false)
+        $str = $s;
+
+    // DOS newline
+    if (($s = mb_ereg_replace("\r\n", "\\n", $str, "p")) !== false)
+        $str = $s;
+
+    if (($s = mb_ereg_replace("\n", "\\n", $str, "p")) !== false)
+        $str = $s;
+    return $str;
+}
+     
+}
+
+?>
