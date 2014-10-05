@@ -1,7 +1,8 @@
 <?php 
 
 /**
- * 
+W ym pliku do tworzenia pdf-a użyłem biblioteki pdfformfiller, biblioteka ta wypełnia przygotowany wcześniej formularz 
+pdf
  */
 class karta {
     
