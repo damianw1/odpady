@@ -1,0 +1,31 @@
+<?php session_start();
+require_once 'config/DataBase.php';
+require_once 'karta.php';
+
+//Wywołanie metody do generowania pdf jest w osobnym pliku w ktorym nie ma znacnzikow html 
+//dlatego że jak są to bedą one też w pdf
+
+if(isset($_POST['Submit'])){
+    extract($_POST);
+    $karta = new karta();
+    if(isset($_POST['update']) && $_POST['update'] == 1){
+        $update_card = $karta->UpdateCard($id, $odpad, $masa, $nr_rejest, $data);
+        if($update_card == 1){
+            ?><meta http-equiv="Refresh" content="0; url=index.php?site=KartaEdit&done=1" /><?php
+        }else{
+            ?><meta http-equiv="Refresh" content="0; url=index.php?site=KartaEdit&error=<?php echo $update_card ?>&e_id=<?php echo $id ?>" /><?php
+        }
+    }else{
+        
+        $add_karta = $karta->addKarta($rok, $company, $odpad, $data, $masa, $nr_rejest);
+        if($add_karta == 1){
+            ?><meta http-equiv="Refresh" content="0; url=index.php?site=KartaAdd&done=1" /><?php
+        }else{
+            //echo $add_karta;
+            ?><meta http-equiv="Refresh" content="0; url=index.php?site=KartaAdd&error=<?php echo $add_karta; ?>" /><?php
+        }
+    }        
+}else{
+    ?><meta http-equiv="Refresh" content="0; url=index.php"/><?php
+}
+?>
